@@ -36,6 +36,7 @@ func main() {
 
     go func() {
         // 服务连接
+        log.Printf("\nFile server start listen: %v\n", config.GlobaConfig.Port)
         if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %s\n", err)
 		}

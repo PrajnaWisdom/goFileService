@@ -11,8 +11,9 @@ import (
 
 
 type Config struct {
-    Mode   string   `yaml:"mode"`
-    Port   int      `yaml:"port"`
+    Mode          string   `yaml:"mode"`
+    Port          int      `yaml:"port"`
+    FileBaseUri   string   `yaml:"fileBaseUri"`
 }
 
 
