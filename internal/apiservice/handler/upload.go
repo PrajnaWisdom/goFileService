@@ -68,7 +68,7 @@ func ChunksMetaDataHandler(c *gin.Context) {
 
 
 // LoadMeatDataFileHandler 加载metadata信息 
-func LoadMeatDataFileHandler(c *gin.Context) {    
+func LoadMeatDataFileHandler(c *gin.Context) {
     var (
         context = Context{C: c}
         form = form.GetMetaDataForm{}
@@ -100,4 +100,51 @@ func LoadMeatDataFileHandler(c *gin.Context) {
         consts.SuccessMsg,
     )
     return
+}
+
+
+func UploadFileChunksHandler(c *gin.Context) {
+    var (
+        context = Context{C: c}
+        form = form.UploadChunksForm{}
+    )
+    if err := c.ShouldBind(&form); err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    chunks := fileutil.FileChunks{
+        Fuid:      form.Fuid,
+        OwnerID:   form.OwnerID,
+        Index:     form.Index,
+        Data:      form.Data,
+    }
+    if chunks.IsExists(config.GlobaConfig.FileBaseUri) {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            nil,
+            "切片文件已存在",
+        )
+        return
+    }
+    if err := chunks.Save(config.GlobaConfig.FileBaseUri); err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    context.Response(
+        http.StatusOK,
+        consts.Success,
+        nil,
+        consts.SuccessMsg,
+    )
 }

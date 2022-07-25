@@ -9,6 +9,7 @@ import (
     "fmt"
     "log"
     "time"
+    "io/ioutil"
     "fileservice/pkg/util"
     "fileservice/pkg/consts"
 )
@@ -25,9 +26,15 @@ const (
 )
 
 
+const (
+    ChunksFileSuffix = ".gochunks"
+)
+
+
 // FileChunks 文件切块结构
 type FileChunks struct {
     Fuid        string         // 文件ID，UUID
+    OwnerID     string         // 文件所属者
     Index       int            // 切块编号
     Data        []byte         // 切块数据
 }
@@ -59,6 +66,22 @@ type FileError struct {
 
 func (e FileError) Error() string {
     return fmt.Sprintf("file error[%v] msg:%v", e.ErrorCode, e.Msg)
+}
+
+
+// IsExists 判断FileChunks切片文件是否存在
+func (this *FileChunks) IsExists(baseurl string) bool {
+    filepath := path.Join(baseurl, this.OwnerID, this.Fuid, string(this.Index) + ChunksFileSuffix)
+    if util.IsFile(filepath) {
+        return true
+    }
+    return false
+}
+
+
+func (this *FileChunks) Save(baseurl string) error {
+    filepath := path.Join(baseurl, this.OwnerID, this.Fuid, string(this.Index) + ChunksFileSuffix)
+    return ioutil.WriteFile(filepath, this.Data, 0666)
 }
 
 
