@@ -7,11 +7,11 @@ import (
     "path"
     "fmt"
     "time"
-    "github.com/google/uuid"
     "github.com/gin-gonic/gin"
     "fileservice/internal/apiservice/config"
     "fileservice/pkg/fileutil"
     "fileservice/pkg/consts"
+    "fileservice/pkg/util"
     "fileservice/internal/apiservice/form/api"
 )
 
@@ -36,7 +36,6 @@ func ChunksMetaDataHandler(c *gin.Context) {
     var (
         context = Context{C: c}
         form = form.ChunksMetaDataForm{}
-        uuid, _ = uuid.NewUUID()
     )
     if err := c.ShouldBind(&form); err != nil {
         context.Response(
@@ -51,17 +50,53 @@ func ChunksMetaDataHandler(c *gin.Context) {
         UploadFileMetadata: fileutil.UploadFileMetadata{
             FileName:   form.FileName,
             FileSize:   form.FileSize,
-            Fuid:       uuid.String(),
+            Fuid:       util.GenerateUUID(),
             ChunksNum:  10,
             ModifyTime: time.Now(),
         },
-        OwnerID:    uuid.String(),
+        OwnerID:    util.GenerateUUID(),
     }
     metadata.SaveToFile(config.GlobaConfig.FileBaseUri)
     context.Response(
         http.StatusOK,
         consts.Success,
-        form,
+        metadata,
+        consts.SuccessMsg,
+    )
+    return
+}
+
+
+// LoadMeatDataFileHandler 加载metadata信息 
+func LoadMeatDataFileHandler(c *gin.Context) {    
+    var (
+        context = Context{C: c}
+        form = form.GetMetaDataForm{}
+    )
+    if err := c.ShouldBind(&form); err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    filepath := path.Join(config.GlobaConfig.FileBaseUri, form.OwnerID, form.Fuid, "."+form.Fuid)
+    metadata, err := fileutil.LoadMetaDataFile(filepath)
+    if err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    context.Response(
+        http.StatusOK,
+        consts.Success,
+        metadata,
         consts.SuccessMsg,
     )
     return
