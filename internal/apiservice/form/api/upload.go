@@ -15,8 +15,16 @@ type GetMetaDataForm struct {
 
 
 type UploadChunksForm struct {
+    Fuid        string    `form:"fuid" binding:"required"`
+    OwnerID     string    `form:"ownerid" binding:"required"`
+    Index       int       `form:"index" binding:"required"`
+    Md5         string    `form:"md5" binding:"required"`
+    Data        []byte    `form:"data" binding:"required"`
+}
+
+
+type CompleteChunksForm struct {
     Fuid        string    `json:"fuid" binding:"required"`
     OwnerID     string    `json:"ownerid" binding:"required"`
-    Index       int       `json:"index" binding:"required"`
-    Data        []byte    `json:"data" binding:"required"`
+    Md5         string    `json:"md5" binding:"required"`
 }

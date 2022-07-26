@@ -7,6 +7,7 @@ import (
     "path"
     "fmt"
     "time"
+    "strings"
     "github.com/gin-gonic/gin"
     "fileservice/internal/apiservice/config"
     "fileservice/pkg/fileutil"
@@ -132,7 +133,9 @@ func UploadFileChunksHandler(c *gin.Context) {
         )
         return
     }
-    if err := chunks.Save(config.GlobaConfig.FileBaseUri); err != nil {
+    filepath := path.Join(config.GlobaConfig.FileBaseUri, form.OwnerID, form.Fuid, "."+form.Fuid)
+    metadata, err := fileutil.LoadMetaDataFile(filepath)
+    if err != nil {
         context.Response(
             http.StatusBadRequest,
             consts.ParamError,
@@ -141,10 +144,67 @@ func UploadFileChunksHandler(c *gin.Context) {
         )
         return
     }
+    if err := chunks.Save(config.GlobaConfig.FileBaseUri, form.Md5); err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    go metadata.SetChunksMd5(chunks.Index, form.Md5, config.GlobaConfig.FileBaseUri)
     context.Response(
         http.StatusOK,
         consts.Success,
         nil,
         consts.SuccessMsg,
     )
+}
+
+
+func CompleteChunksHandler(c * gin.Context) {
+    var (
+        context = Context{C: c}
+        form = form.CompleteChunksForm{}
+    )
+    if err := c.ShouldBind(&form); err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    filepath := path.Join(config.GlobaConfig.FileBaseUri, form.OwnerID, form.Fuid, "."+form.Fuid)
+    metadata, err := fileutil.LoadMetaDataFile(filepath)
+    if err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    ok, fileErr := metadata.CheckFileMd5(form.Md5);
+    if !ok {
+        context.Response(
+            http.StatusOK,
+            fileErr.ErrorCode,
+            fileErr.Error(),
+            fileErr.Msg,
+        )
+        return
+    }
+    uri := metadata.GetFileUri()
+    url := strings.Join([]string{config.GlobaConfig.Domain, config.DownloadUri, uri}, "/")
+    context.Response(
+        http.StatusOK,
+        consts.Success,
+        map[string]interface{}{"url": url},
+        consts.SuccessMsg,
+    )
+    return
 }

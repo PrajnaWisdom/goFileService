@@ -9,6 +9,9 @@ import (
     "fmt"
     "log"
     "time"
+    "strings"
+    "encoding/hex"
+    "crypto/md5"
     "io/ioutil"
     "fileservice/pkg/util"
     "fileservice/pkg/consts"
@@ -42,12 +45,13 @@ type FileChunks struct {
 
 // UploadFileMetadata 客户端传来的文件元数据结构
 type UploadFileMetadata struct {
-    FileName    string         // 文件名
-    Fuid        string         // 文件ID，随机生成的UUID
-    FileSize    int64          // 文件大小
-    Md5         string         // 文件MD5值
-    ChunksNum   int            // 文件分块数
-    ModifyTime  time.Time      // 文件修改时间
+    FileName    string          // 文件名
+    Fuid        string          // 文件ID，随机生成的UUID
+    FileSize    int64           // 文件大小
+    Md5         string          // 文件MD5值
+    ChunksNum   int             // 文件分块数
+    ModifyTime  time.Time       // 文件修改时间
+    ChunksMD5   *map[int]string // 文件分块MD5
 }
 
 
@@ -71,7 +75,7 @@ func (e FileError) Error() string {
 
 // IsExists 判断FileChunks切片文件是否存在
 func (this *FileChunks) IsExists(baseurl string) bool {
-    filepath := path.Join(baseurl, this.OwnerID, this.Fuid, string(this.Index) + ChunksFileSuffix)
+    filepath := path.Join(baseurl, this.OwnerID, this.Fuid, fmt.Sprintf("%v", this.Index) + ChunksFileSuffix)
     if util.IsFile(filepath) {
         return true
     }
@@ -79,8 +83,17 @@ func (this *FileChunks) IsExists(baseurl string) bool {
 }
 
 
-func (this *FileChunks) Save(baseurl string) error {
-    filepath := path.Join(baseurl, this.OwnerID, this.Fuid, string(this.Index) + ChunksFileSuffix)
+func (this *FileChunks) Save(baseurl, cMd5 string) error {
+    filepath := path.Join(baseurl, this.OwnerID, this.Fuid, fmt.Sprintf("%v", this.Index) + ChunksFileSuffix)
+    hash := md5.New()
+    hash.Write(this.Data)
+    sMd5 := hex.EncodeToString(hash.Sum(nil))
+    if sMd5 != cMd5 {
+        return FileError{
+            ErrorCode: consts.MD5Inconsistent,
+            Msg:       consts.MD5InconsistentMsg,
+        }
+    }
     return ioutil.WriteFile(filepath, this.Data, 0666)
 }
 
@@ -120,6 +133,57 @@ func (this *ServerFileMetadata) SaveToFile(baseUrl string) error {
     log.Println("写入成功")
 	file.Close()
     return nil
+}
+
+
+// CheckFileMd5 校验上传文件md5
+func (this *ServerFileMetadata) CheckFileMd5(cMd5 string) (bool, *FileError) {
+    if len(*this.ChunksMD5) != this.ChunksNum {
+        return false, &FileError{
+            ErrorCode: consts.ChunksNumError,
+            Msg: consts.ChunksNumErrorMsg,
+        }
+    }
+    hash := md5.New()
+    for i := 1; i <= this.ChunksNum; i++ {
+        hash.Write([]byte((*this.ChunksMD5)[i]))
+    }
+    sMd5 := hex.EncodeToString(hash.Sum(nil))
+    if sMd5 != cMd5 {
+        return false, &FileError{
+            ErrorCode: consts.MD5Inconsistent,
+            Msg:       consts.MD5InconsistentMsg,
+        }
+    }
+    return true, nil
+}
+
+
+func (this *ServerFileMetadata) GetFileUri() string {
+    filename := this.Fuid + path.Ext(this.FileName)
+    return strings.Join([]string{this.OwnerID, filename}, "/")
+}
+
+
+func (this * ServerFileMetadata) SetChunksMd5(chunkNumber int, cMd5, baseUri string) {
+    if this.ChunksMD5 == nil {
+        this.ChunksMD5 = &(map[int]string{})
+    }
+    (*this.ChunksMD5)[chunkNumber] = cMd5
+    filepath := path.Join(baseUri, this.OwnerID, this.Fuid, "."+this.Fuid)
+    file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE, 0666)
+    if err != nil {
+		log.Println("创建元数据文件失败")
+		return
+	}
+    enc := gob.NewEncoder(file)
+	err = enc.Encode(this)
+	if err != nil {
+		log.Println("写元数据文件失败")
+		return
+	}
+    log.Println("写入成功")
+	file.Close()
 }
 
 

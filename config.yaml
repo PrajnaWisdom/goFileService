@@ -1,3 +1,3 @@
 mode: debug
 port: 8080
-fileBaseUri: /home/houkexin/code/goFileService/statics
+fileBaseUri: ./statics

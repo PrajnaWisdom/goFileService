@@ -14,8 +14,13 @@ type Config struct {
     Mode          string   `yaml:"mode"`
     Port          int      `yaml:"port"`
     FileBaseUri   string   `yaml:"fileBaseUri"`
+    Domain        string   `yaml:"domain"`
 }
 
+
+const (
+    DownloadUri string = "api/v1/chunks"
+)
 
 var GlobaConfig = Config{}
 
