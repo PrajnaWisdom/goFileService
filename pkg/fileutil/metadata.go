@@ -31,6 +31,9 @@ const (
 
 const (
     ChunksFileSuffix = ".gochunks"
+    MaxChunksNumber  = 10000
+    MaxChunksSize    = 1024 * 1024 * 1024
+    MinChunksSize    = 1024 * 1024
 )
 
 
@@ -83,6 +86,7 @@ func (this *FileChunks) IsExists(baseurl string) bool {
 }
 
 
+// Save 保存分片数据
 func (this *FileChunks) Save(baseurl, cMd5 string) error {
     filepath := path.Join(baseurl, this.OwnerID, this.Fuid, fmt.Sprintf("%v", this.Index) + ChunksFileSuffix)
     hash := md5.New()
@@ -98,6 +102,7 @@ func (this *FileChunks) Save(baseurl, cMd5 string) error {
 }
 
 
+// IsExistsMetaDataFile 判断分片上传原数据文件是否存在
 func (this *ServerFileMetadata) IsExistsMetaDataFile(path string) bool {
     if util.IsFile(path) {
         return true
@@ -106,6 +111,7 @@ func (this *ServerFileMetadata) IsExistsMetaDataFile(path string) bool {
 }
 
 
+// SaveToFile 将ServerFileMetadata保存到文件
 func (this *ServerFileMetadata) SaveToFile(baseUrl string) error {
     saveDir := path.Join(baseUrl, this.OwnerID, this.Fuid)
     filepath := path.Join(saveDir, "."+this.Fuid)
@@ -159,12 +165,14 @@ func (this *ServerFileMetadata) CheckFileMd5(cMd5 string) (bool, *FileError) {
 }
 
 
+// GetFileUri 获取上传文件的相对路径
 func (this *ServerFileMetadata) GetFileUri() string {
     filename := this.Fuid + path.Ext(this.FileName)
     return strings.Join([]string{this.OwnerID, filename}, "/")
 }
 
 
+// SetChunksMd5 设置分片的MD5值
 func (this * ServerFileMetadata) SetChunksMd5(chunkNumber int, cMd5, baseUri string) {
     if this.ChunksMD5 == nil {
         this.ChunksMD5 = &(map[int]string{})
@@ -184,6 +192,20 @@ func (this * ServerFileMetadata) SetChunksMd5(chunkNumber int, cMd5, baseUri str
 	}
     log.Println("写入成功")
 	file.Close()
+}
+
+
+// GetMissChunksNumber 获取缺失的分片编号
+func (this *UploadFileMetadata) GetMissChunksNumber() []int {
+    numbers := []int{}
+    for i := 1; i <= this.ChunksNum; i++ {
+        if this.ChunksMD5 == nil {
+            numbers = append(numbers, i)
+        } else if _, ok := (*this.ChunksMD5)[i]; !ok {
+            numbers = append(numbers, i)
+        }
+    }
+    return numbers
 }
 
 

@@ -19,9 +19,11 @@ func InitRouter() *gin.Engine {
     chunks := v1.Group("/chunks")
     chunks.Use(middleware.Auth())
     chunks.POST("/metadata", handler.ChunksMetaDataHandler)
-    chunks.GET("/metadata", handler.LoadMeatDataFileHandler)
+    chunks.GET("/metadata", handler.GetMetadataHandler)
+    chunks.GET("/missnumbers", handler.GetMissChunksNumberHandler)
     chunks.POST("/data", handler.UploadFileChunksHandler)
     chunks.POST("/complete", handler.CompleteChunksHandler)
+    v1.GET("/:ownerid/:fuid", handler.DownloadHandler)
 
     return r
 }
