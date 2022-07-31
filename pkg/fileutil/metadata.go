@@ -37,31 +37,33 @@ const (
 )
 
 
+type BaseModel struct {
+    ID          uint64     `gorm:"primaryKey;comment:自增ID"`
+    CreatedAt   time.Time  `gorm:"index;comment:创建时间"`
+    UpdatedAt   time.Time  `gorm:"index;comment:更新时间"`
+}
+
+
 // FileChunks 文件切块结构
 type FileChunks struct {
-    Fuid        string         // 文件ID，UUID
-    OwnerID     string         // 文件所属者
-    Index       int            // 切块编号
-    Data        []byte         // 切块数据
+    BaseModel
+    Fuid        string     `gorm:"size:64;comment:文件ID"`
+    OwnerID     string     `gorm:"size:64;comment:文件所属者"`
+    Index       int        `gorm:"comment:切块编号"`
+    // Data        []byte         // 切块数据
 }
 
 
-// UploadFileMetadata 客户端传来的文件元数据结构
-type UploadFileMetadata struct {
-    FileName    string          // 文件名
-    Fuid        string          // 文件ID，随机生成的UUID
-    FileSize    int64           // 文件大小
-    Md5         string          // 文件MD5值
-    ChunksNum   int             // 文件分块数
-    ModifyTime  time.Time       // 文件修改时间
-    ChunksMD5   *map[int]string // 文件分块MD5
-}
-
-
-type ServerFileMetadata struct {
-    UploadFileMetadata
-    OwnerID     string         // 文件所属者
-    State       int            // 文件状态
+type FileMetadata struct {
+    BaseModel
+    FileName    string     `gorm:"size:255;comment:文件名"`
+    Fuid        string     `gorm:"size:64;comment:文件ID"`
+    FileSize    int64      `gorm:"comment:文件大小"`
+    Md5         string     `gorm:"size:64;comment:文件MD5值"`
+    ChunksNum   int        `gorm:"default:0;comment:文件分块数"`
+    //ChunksMD5   *map[int]string // 文件分块MD5
+    OwnerID     string     `gorm:"size:64;comment:文件所属者"`
+    State       int        `gorm:"default:0;comment:文件状态"`
 }
 
 
