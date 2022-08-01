@@ -4,6 +4,8 @@ package util
 import (
     "os"
     "log"
+    "crypto/md5"
+    "encoding/hex"
     uuid "github.com/satori/go.uuid"
 )
 
@@ -20,4 +22,12 @@ func IsFile(filepath string) bool {
         return false
     }
     return !fileInfo.IsDir()
+}
+
+
+func EncodeMD5(value string) string {
+    m := md5.New()
+	m.Write([]byte(value))
+
+	return hex.EncodeToString(m.Sum(nil))
 }

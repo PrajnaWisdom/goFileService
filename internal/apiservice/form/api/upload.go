@@ -5,7 +5,6 @@ package form
 type ChunksMetaDataForm struct {
     FileName   string     `json:"filename" binding:"required"`
     FileSize   int64      `json:"filesize" binding:"required"`
-    ChunksNum  int        `json:"chunksnum" binding:"required,gte=1"`
 }
 
 

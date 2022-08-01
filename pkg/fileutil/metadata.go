@@ -4,21 +4,24 @@ package fileutil
 
 import (
     "os"
-    "encoding/gob"
     "path"
     "fmt"
     "log"
     "time"
+    "io"
     "strings"
+    "errors"
     "encoding/hex"
     "crypto/md5"
     "io/ioutil"
-    "fileservice/pkg/util"
+    "gorm.io/gorm"
     "fileservice/pkg/consts"
+    "fileservice/pkg/db"
 )
 
 
 type FileState   int
+
 
 const (
     Error          FileState = -1
@@ -47,8 +50,9 @@ type BaseModel struct {
 // FileChunks 文件切块结构
 type FileChunks struct {
     BaseModel
-    Fuid        string     `gorm:"size:64;comment:文件ID"`
-    OwnerID     string     `gorm:"size:64;comment:文件所属者"`
+    Fuid        string     `gorm:"size:64;index:chunk_idx_owner_fuid,priority:2;comment:文件ID"`
+    OwnerID     string     `gorm:"size:64;index:chunk_idx_owner_fuid,priority:1;comment:文件所属者"`
+    Md5         string     `gorm:"size:64;comment:切片MD5值"`
     Index       int        `gorm:"comment:切块编号"`
     // Data        []byte         // 切块数据
 }
@@ -57,13 +61,13 @@ type FileChunks struct {
 type FileMetadata struct {
     BaseModel
     FileName    string     `gorm:"size:255;comment:文件名"`
-    Fuid        string     `gorm:"size:64;comment:文件ID"`
+    Fuid        string     `gorm:"size:64;index:idx_owner_fuid,priority:2;comment:文件ID"`
+    OwnerID     string     `gorm:"size:64;index:idx_owner_fuid,priority:1;comment:文件所属者"`
     FileSize    int64      `gorm:"comment:文件大小"`
     Md5         string     `gorm:"size:64;comment:文件MD5值"`
     ChunksNum   int        `gorm:"default:0;comment:文件分块数"`
     //ChunksMD5   *map[int]string // 文件分块MD5
-    OwnerID     string     `gorm:"size:64;comment:文件所属者"`
-    State       int        `gorm:"default:0;comment:文件状态"`
+    State       FileState  `gorm:"default:0;comment:文件状态"`
 }
 
 
@@ -79,20 +83,33 @@ func (e FileError) Error() string {
 
 
 // IsExists 判断FileChunks切片文件是否存在
-func (this *FileChunks) IsExists(baseurl string) bool {
-    filepath := path.Join(baseurl, this.OwnerID, this.Fuid, fmt.Sprintf("%v", this.Index) + ChunksFileSuffix)
-    if util.IsFile(filepath) {
-        return true
+func GetFileChunks(ownerID, fuid string, index int) (*FileChunks, error) {
+    var chunk FileChunks
+    err := db.DB.Where("owner_id = ? and fuid = ? and `index` = ?", ownerID, fuid, index).First(&chunk).Error
+    if err != nil{
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return nil, nil
+        }
+        return nil, err
     }
-    return false
+    return &chunk, nil
 }
 
 
-// Save 保存分片数据
-func (this *FileChunks) Save(baseurl, cMd5 string) error {
+func (this *FileChunks) Create() error {
+    return db.DB.Create(this).Error
+}
+
+
+// SaveData 将分片数据保存到磁盘
+func (this *FileChunks) SaveData(reader io.Reader, baseurl, cMd5 string) error {
     filepath := path.Join(baseurl, this.OwnerID, this.Fuid, fmt.Sprintf("%v", this.Index) + ChunksFileSuffix)
+    content, err := ioutil.ReadAll(reader)
+    if err != nil {
+        return err
+    }
     hash := md5.New()
-    hash.Write(this.Data)
+    hash.Write(content)
     sMd5 := hex.EncodeToString(hash.Sum(nil))
     if sMd5 != cMd5 {
         return FileError{
@@ -100,61 +117,58 @@ func (this *FileChunks) Save(baseurl, cMd5 string) error {
             Msg:       consts.MD5InconsistentMsg,
         }
     }
-    return ioutil.WriteFile(filepath, this.Data, 0666)
+    return ioutil.WriteFile(filepath, content, 0666)
 }
 
 
 // IsExistsMetaDataFile 判断分片上传原数据文件是否存在
-func (this *ServerFileMetadata) IsExistsMetaDataFile(path string) bool {
-    if util.IsFile(path) {
-        return true
+func (this *FileMetadata) IsExistsMetaData() bool {
+    var metadata FileMetadata
+    err := db.DB.Where("owner_id = ? and fuid = ?", this.OwnerID, this.Fuid).First(&metadata).Error
+    if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+        return false
     }
-    return false
+    return true
 }
 
 
-// SaveToFile 将ServerFileMetadata保存到文件
-func (this *ServerFileMetadata) SaveToFile(baseUrl string) error {
+// Create 在数据库中创建一条FileMetadata记录
+func (this *FileMetadata) Create(baseUrl string) error {
     saveDir := path.Join(baseUrl, this.OwnerID, this.Fuid)
-    filepath := path.Join(saveDir, "."+this.Fuid)
-    //f, err := os.OpenFile()
-    log.Printf("文件地址: %v\n", filepath)
-    if this.IsExistsMetaDataFile(filepath) {
+    log.Printf("文件保存地址: %v\n", saveDir)
+    if this.IsExistsMetaData() {
         return FileError{ErrorCode: consts.FileIsExists, Msg: consts.FileIsExistsMsg}
     }
     err := os.MkdirAll(saveDir, 0766)
     if err != nil {
-        log.Println(err)
+        log.Printf("保存磁盘失败: %v", err)
         return err
     }
-    file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE, 0666)
-    if err != nil {
-		log.Println("创建元数据文件失败")
-		return err
-	}
-    enc := gob.NewEncoder(file)
-	err = enc.Encode(this)
-	if err != nil {
-		log.Println("写元数据文件失败")
-		return err
-	}
-    log.Println("写入成功")
-	file.Close()
-    return nil
+    err = db.DB.Create(this).Error
+    return err
 }
 
 
 // CheckFileMd5 校验上传文件md5
-func (this *ServerFileMetadata) CheckFileMd5(cMd5 string) (bool, *FileError) {
-    if len(*this.ChunksMD5) != this.ChunksNum {
+func (this *FileMetadata) CheckFileMd5(cMd5 string) (bool, *FileError) {
+    chunks, err := GetFileChunksByOwnerIDandFuid(this.OwnerID, this.Fuid)
+    if err != nil {
         return false, &FileError{
             ErrorCode: consts.ChunksNumError,
             Msg: consts.ChunksNumErrorMsg,
         }
     }
+    nums := len(*chunks)
     hash := md5.New()
-    for i := 1; i <= this.ChunksNum; i++ {
-        hash.Write([]byte((*this.ChunksMD5)[i]))
+    for i := 1; i <= nums; i++ {
+        chunk := (*chunks)[i - 1]
+        if chunk.Index != i {
+            return false, &FileError{
+                ErrorCode: consts.ChunksNumError,
+                Msg: consts.ChunksNumErrorMsg,
+            }
+        }
+        hash.Write([]byte(chunk.Md5))
     }
     sMd5 := hex.EncodeToString(hash.Sum(nil))
     if sMd5 != cMd5 {
@@ -167,64 +181,64 @@ func (this *ServerFileMetadata) CheckFileMd5(cMd5 string) (bool, *FileError) {
 }
 
 
+// Complete 更新FileMetadata的md5值和State
+func (this *FileMetadata) Complete(cMd5 string) {
+    var nums int
+    chunks, err := GetFileChunksByOwnerIDandFuid(this.OwnerID, this.Fuid)
+    if err == nil {
+        nums = len(*chunks)
+    }
+    this.Md5 = cMd5
+    this.ChunksNum = nums
+    this.State = Active
+    db.DB.Save(this)
+}
+
+
+// SetState 设置文件状态
+func (this *FileMetadata) SetState(state FileState, commit bool) {
+    this.State = state
+    if commit {
+        db.DB.Save(this)
+    }
+}
+
+
 // GetFileUri 获取上传文件的相对路径
-func (this *ServerFileMetadata) GetFileUri() string {
+func (this *FileMetadata) GetFileUri() string {
     filename := this.Fuid + path.Ext(this.FileName)
     return strings.Join([]string{this.OwnerID, filename}, "/")
 }
 
 
-// SetChunksMd5 设置分片的MD5值
-func (this * ServerFileMetadata) SetChunksMd5(chunkNumber int, cMd5, baseUri string) {
-    if this.ChunksMD5 == nil {
-        this.ChunksMD5 = &(map[int]string{})
-    }
-    (*this.ChunksMD5)[chunkNumber] = cMd5
-    filepath := path.Join(baseUri, this.OwnerID, this.Fuid, "."+this.Fuid)
-    file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE, 0666)
-    if err != nil {
-		log.Println("创建元数据文件失败")
-		return
-	}
-    enc := gob.NewEncoder(file)
-	err = enc.Encode(this)
-	if err != nil {
-		log.Println("写元数据文件失败")
-		return
-	}
-    log.Println("写入成功")
-	file.Close()
-}
-
-
 // GetMissChunksNumber 获取缺失的分片编号
-func (this *UploadFileMetadata) GetMissChunksNumber() []int {
+func (this *FileMetadata) GetUploadedChunksNumber() ([]int, error) {
     numbers := []int{}
-    for i := 1; i <= this.ChunksNum; i++ {
-        if this.ChunksMD5 == nil {
-            numbers = append(numbers, i)
-        } else if _, ok := (*this.ChunksMD5)[i]; !ok {
-            numbers = append(numbers, i)
-        }
+    chunks, err := GetFileChunksByOwnerIDandFuid(this.OwnerID, this.Fuid)
+    if err != nil {
+        return nil, err
     }
-    return numbers
+    for _, chunk := range *chunks {
+        numbers = append(numbers, chunk.Index)
+    }
+    return numbers, nil
 }
 
 
 // LoadMetaDataFile 从文件里面加载metadata信息
-func LoadMetaDataFile(path string) (*ServerFileMetadata, error) {
-    file, err := os.Open(path)
-	if err != nil {
-		log.Println("获取文件状态失败，文件路径：", path)
-		return nil, err
-	}
+func GetMetaDataByOwnerIDandFuid(ownerID, fuid string) (*FileMetadata, error) {
+    var metadata FileMetadata
+    err := db.DB.Where("owner_id = ? and fuid = ?", ownerID, fuid).First(&metadata).Error
+	return &metadata, err
+}
 
-	var metadata ServerFileMetadata
-	filedata := gob.NewDecoder(file)
-	err = filedata.Decode(&metadata)
-	if err != nil {
-		log.Println("格式化文件元数据失败, err", err)
-		return nil, err
-	}
-	return &metadata, nil
+
+// GetFileChunksByOwnerIDandFuid 根据ownerID和fuid获取已上传的FileChunks列表，并按照index排序
+func GetFileChunksByOwnerIDandFuid(ownerID, fuid string) (*[]FileChunks, error) {
+    var chunks []FileChunks
+    err := db.DB.Where("owner_id = ? and fuid = ?", ownerID, fuid).Order("`index`").Find(&chunks).Error
+    if err != nil {
+        return nil, err
+    }
+    return &chunks, nil
 }

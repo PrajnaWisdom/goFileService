@@ -6,7 +6,6 @@ import (
     "log"
     "path"
     "fmt"
-    "time"
     "strings"
     "io"
     "os"
@@ -50,26 +49,22 @@ func ChunksMetaDataHandler(c *gin.Context) {
         )
         return
     }
-    if form.ChunksNum > fileutil.MaxChunksNumber {
+    metadata := fileutil.FileMetadata{
+        FileName:   form.FileName,
+        FileSize:   form.FileSize,
+        Fuid:       util.EncodeMD5(util.GenerateUUID()),
+        OwnerID:    util.EncodeMD5(util.GenerateUUID()),
+    }
+    err := metadata.Create(config.GlobaConfig.FileBaseUri)
+    if err != nil {
         context.Response(
             http.StatusBadRequest,
             consts.ParamError,
-            fmt.Sprintf("ChunksNum 不能大于:%v", fileutil.MaxChunksNumber),
+            fmt.Sprintf("%v", err),
             consts.ParamErrorMsg,
         )
         return
     }
-    metadata := fileutil.ServerFileMetadata{
-        UploadFileMetadata: fileutil.UploadFileMetadata{
-            FileName:   form.FileName,
-            FileSize:   form.FileSize,
-            Fuid:       util.GenerateUUID(),
-            ChunksNum:  form.ChunksNum,
-            ModifyTime: time.Now(),
-        },
-        OwnerID:    util.GenerateUUID(),
-    }
-    metadata.SaveToFile(config.GlobaConfig.FileBaseUri)
     context.Response(
         http.StatusOK,
         consts.Success,
@@ -95,19 +90,26 @@ func GetMissChunksNumberHandler(c *gin.Context) {
         )
         return
     }
-    filepath := path.Join(config.GlobaConfig.FileBaseUri, form.OwnerID, form.Fuid, "."+form.Fuid)
-    metadata, err := fileutil.LoadMetaDataFile(filepath)
+    metadata, err := fileutil.GetMetaDataByOwnerIDandFuid(form.OwnerID, form.Fuid)
     if err != nil {
         context.Response(
             http.StatusBadRequest,
             consts.ParamError,
-            err.Error(),
+            "文件元数据不存在",
             consts.ParamErrorMsg,
         )
         return
     }
-    log.Println(metadata)
-    numbers := metadata.GetMissChunksNumber()
+    numbers, err := metadata.GetUploadedChunksNumber()
+    if err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            "文件元数据不存在",
+            consts.ParamErrorMsg,
+        )
+        return
+    }
     context.Response(
         http.StatusOK,
         consts.Success,
@@ -142,23 +144,23 @@ func UploadFileChunksHandler(c *gin.Context) {
         )
         return
     }
-    filepath := path.Join(config.GlobaConfig.FileBaseUri, form.OwnerID, form.Fuid, "."+form.Fuid)
-    metadata, err := fileutil.LoadMetaDataFile(filepath)
+    _, err = fileutil.GetMetaDataByOwnerIDandFuid(form.OwnerID, form.Fuid)
     if err != nil {
         context.Response(
             http.StatusBadRequest,
             consts.ParamError,
-            err.Error(),
+            "文件元数据不存在",
             consts.ParamErrorMsg,
         )
         return
     }
-    if form.Index > metadata.ChunksNum {
+    chunk, _ := fileutil.GetFileChunks(form.OwnerID, form.Fuid, form.Index)
+    if chunk != nil {
         context.Response(
             http.StatusBadRequest,
             consts.ParamError,
-            "切片索引[index]不能大于切片数",
-            consts.ParamErrorMsg,
+            nil,
+            "切片文件已存在",
         )
         return
     }
@@ -172,32 +174,13 @@ func UploadFileChunksHandler(c *gin.Context) {
         )
         return
     }
-    content, err := ioutil.ReadAll(f)
-    if err != nil {
-        context.Response(
-            http.StatusBadRequest,
-            consts.ParamError,
-            err.Error(),
-            consts.ParamErrorMsg,
-        )
-        return
-    }
     chunks := fileutil.FileChunks{
         Fuid:      form.Fuid,
         OwnerID:   form.OwnerID,
         Index:     form.Index,
-        Data:      content,
+        Md5:       form.Md5,
     }
-    if chunks.IsExists(config.GlobaConfig.FileBaseUri) {
-        context.Response(
-            http.StatusBadRequest,
-            consts.ParamError,
-            nil,
-            "切片文件已存在",
-        )
-        return
-    }
-    if err := chunks.Save(config.GlobaConfig.FileBaseUri, form.Md5); err != nil {
+    if err := chunks.SaveData(f, config.GlobaConfig.FileBaseUri, form.Md5); err != nil {
         context.Response(
             http.StatusBadRequest,
             consts.ParamError,
@@ -206,7 +189,15 @@ func UploadFileChunksHandler(c *gin.Context) {
         )
         return
     }
-    go metadata.SetChunksMd5(chunks.Index, form.Md5, config.GlobaConfig.FileBaseUri)
+    if err := chunks.Create(); err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
     context.Response(
         http.StatusOK,
         consts.Success,
@@ -230,13 +221,12 @@ func CompleteChunksHandler(c * gin.Context) {
         )
         return
     }
-    filepath := path.Join(config.GlobaConfig.FileBaseUri, form.OwnerID, form.Fuid, "."+form.Fuid)
-    metadata, err := fileutil.LoadMetaDataFile(filepath)
+    metadata, err := fileutil.GetMetaDataByOwnerIDandFuid(form.OwnerID, form.Fuid)
     if err != nil {
         context.Response(
             http.StatusBadRequest,
             consts.ParamError,
-            err.Error(),
+            "文件元数据不存在",
             consts.ParamErrorMsg,
         )
         return
@@ -251,6 +241,7 @@ func CompleteChunksHandler(c * gin.Context) {
         )
         return
     }
+    metadata.Complete(form.Md5)
     uri := metadata.GetFileUri()
     url := strings.Join([]string{config.GlobaConfig.Domain, config.DownloadUri, uri}, "/")
     context.Response(
@@ -278,13 +269,12 @@ func GetMetadataHandler(c *gin.Context) {
         )
         return
     }
-    filepath := path.Join(config.GlobaConfig.FileBaseUri, form.OwnerID, form.Fuid, "."+form.Fuid)
-    metadata, err := fileutil.LoadMetaDataFile(filepath)
+    metadata, err := fileutil.GetMetaDataByOwnerIDandFuid(form.OwnerID, form.Fuid)
     if err != nil {
         context.Response(
             http.StatusBadRequest,
             consts.ParamError,
-            err.Error(),
+            "文件元数据不存在",
             consts.ParamErrorMsg,
         )
         return
@@ -314,13 +304,12 @@ func DownloadHandler(c *gin.Context) {
         return
     }
     fuid := strings.Split(form.Fuid, ".")[0]
-    filepath := path.Join(config.GlobaConfig.FileBaseUri, form.OwnerID, fuid, "."+fuid)
-    metadata, err := fileutil.LoadMetaDataFile(filepath)
+    metadata, err := fileutil.GetMetaDataByOwnerIDandFuid(form.OwnerID, fuid)
     if err != nil {
         context.Response(
             http.StatusBadRequest,
             consts.ParamError,
-            err.Error(),
+            "文件元数据不存在",
             consts.ParamErrorMsg,
         )
         return
