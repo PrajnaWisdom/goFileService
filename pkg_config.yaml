@@ -1,5 +1,5 @@
 db:
     # dsn: gofileserver.db
     # driver: sqlite
-    dsn: root:123456@tcp(127.0.0.1:3307)/fileserver?charset=utf8mb4&parseTime=True&loc=Local
+    dsn: root:123456@tcp(120.237.118.139:13306)/fileserver?charset=utf8mb4&parseTime=True&loc=Local
     driver: mysql

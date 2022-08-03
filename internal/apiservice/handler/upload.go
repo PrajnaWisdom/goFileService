@@ -15,6 +15,7 @@ import (
     "fileservice/pkg/fileutil"
     "fileservice/pkg/consts"
     "fileservice/pkg/util"
+    "fileservice/pkg/account"
     "fileservice/internal/apiservice/form/api"
 )
 
@@ -40,6 +41,27 @@ func ChunksMetaDataHandler(c *gin.Context) {
         context = Context{C: c}
         form = form.ChunksMetaDataForm{}
     )
+    cUser, exists := c.Get("user")
+    if !exists {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            nil,
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    user, ok := cUser.(*account.User)
+    log.Println(user, ok)
+    if !ok {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            nil,
+            consts.ParamErrorMsg,
+        )
+        return
+    }
     if err := c.ShouldBind(&form); err != nil {
         context.Response(
             http.StatusBadRequest,
@@ -53,7 +75,7 @@ func ChunksMetaDataHandler(c *gin.Context) {
         FileName:   form.FileName,
         FileSize:   form.FileSize,
         Fuid:       util.EncodeMD5(util.GenerateUUID()),
-        OwnerID:    util.EncodeMD5(util.GenerateUUID()),
+        OwnerID:    user.Uid,
     }
     err := metadata.Create(config.GlobaConfig.FileBaseUri)
     if err != nil {
@@ -125,6 +147,26 @@ func UploadFileChunksHandler(c *gin.Context) {
         context = Context{C: c}
         form = form.UploadChunksForm{}
     )
+    cUser, exists := c.Get("user")
+    if !exists {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            nil,
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    user, ok := cUser.(*account.User)
+    if !ok {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            nil,
+            consts.ParamErrorMsg,
+        )
+        return
+    }
     fh, err := c.FormFile("file")
     if err != nil {
         context.Response(
@@ -144,7 +186,7 @@ func UploadFileChunksHandler(c *gin.Context) {
         )
         return
     }
-    _, err = fileutil.GetMetaDataByOwnerIDandFuid(form.OwnerID, form.Fuid)
+    _, err = fileutil.GetMetaDataByOwnerIDandFuid(user.Uid, form.Fuid)
     if err != nil {
         context.Response(
             http.StatusBadRequest,
@@ -154,7 +196,7 @@ func UploadFileChunksHandler(c *gin.Context) {
         )
         return
     }
-    chunk, _ := fileutil.GetFileChunks(form.OwnerID, form.Fuid, form.Index)
+    chunk, _ := fileutil.GetFileChunks(user.Uid, form.Fuid, form.Index)
     if chunk != nil {
         context.Response(
             http.StatusBadRequest,
@@ -176,7 +218,7 @@ func UploadFileChunksHandler(c *gin.Context) {
     }
     chunks := fileutil.FileChunks{
         Fuid:      form.Fuid,
-        OwnerID:   form.OwnerID,
+        OwnerID:   user.Uid,
         Index:     form.Index,
         Md5:       form.Md5,
     }
@@ -212,6 +254,26 @@ func CompleteChunksHandler(c * gin.Context) {
         context = Context{C: c}
         form = form.CompleteChunksForm{}
     )
+    cUser, exists := c.Get("user")
+    if !exists {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            nil,
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    user, ok := cUser.(*account.User)
+    if !ok {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            nil,
+            consts.ParamErrorMsg,
+        )
+        return
+    }
     if err := c.ShouldBind(&form); err != nil {
         context.Response(
             http.StatusBadRequest,
@@ -221,7 +283,7 @@ func CompleteChunksHandler(c * gin.Context) {
         )
         return
     }
-    metadata, err := fileutil.GetMetaDataByOwnerIDandFuid(form.OwnerID, form.Fuid)
+    metadata, err := fileutil.GetMetaDataByOwnerIDandFuid(user.Uid, form.Fuid)
     if err != nil {
         context.Response(
             http.StatusBadRequest,

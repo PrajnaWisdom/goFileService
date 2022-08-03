@@ -16,7 +16,7 @@ type GetMissChunksNumberForm struct {
 
 type UploadChunksForm struct {
     Fuid        string    `form:"fuid" binding:"required"`
-    OwnerID     string    `form:"ownerid" binding:"required"`
+    //OwnerID     string    `form:"ownerid" binding:"required"`
     Index       int       `form:"index" binding:"required,gte=1"`
     Md5         string    `form:"md5" binding:"required"`
     //Data        []byte    `form:"data" binding:"required"`
@@ -25,7 +25,7 @@ type UploadChunksForm struct {
 
 type CompleteChunksForm struct {
     Fuid        string    `json:"fuid" binding:"required"`
-    OwnerID     string    `json:"ownerid" binding:"required"`
+    //OwnerID     string    `json:"ownerid" binding:"required"`
     Md5         string    `json:"md5" binding:"required"`
 }
 

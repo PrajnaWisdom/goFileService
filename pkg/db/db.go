@@ -4,12 +4,20 @@ package db
 
 import (
     "log"
+    "time"
     "gorm.io/driver/mysql"
     "gorm.io/driver/sqlite"
     "gorm.io/gorm/schema"
     "gorm.io/gorm"
     "fileservice/pkg/config"
 )
+
+
+type BaseModel struct {
+    ID          uint64     `gorm:"primaryKey;comment:自增ID"`
+    CreatedAt   time.Time  `gorm:"index;comment:创建时间"`
+    UpdatedAt   time.Time  `gorm:"index;comment:更新时间"`
+}
 
 
 var DB *gorm.DB

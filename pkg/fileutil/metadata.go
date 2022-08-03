@@ -7,7 +7,6 @@ import (
     "path"
     "fmt"
     "log"
-    "time"
     "io"
     "strings"
     "errors"
@@ -40,16 +39,9 @@ const (
 )
 
 
-type BaseModel struct {
-    ID          uint64     `gorm:"primaryKey;comment:自增ID"`
-    CreatedAt   time.Time  `gorm:"index;comment:创建时间"`
-    UpdatedAt   time.Time  `gorm:"index;comment:更新时间"`
-}
-
-
 // FileChunks 文件切块结构
 type FileChunks struct {
-    BaseModel
+    db.BaseModel
     Fuid        string     `gorm:"size:64;index:chunk_idx_owner_fuid,priority:2;comment:文件ID"`
     OwnerID     string     `gorm:"size:64;index:chunk_idx_owner_fuid,priority:1;comment:文件所属者"`
     Md5         string     `gorm:"size:64;comment:切片MD5值"`
@@ -59,7 +51,7 @@ type FileChunks struct {
 
 
 type FileMetadata struct {
-    BaseModel
+    db.BaseModel
     FileName    string     `gorm:"size:255;comment:文件名"`
     Fuid        string     `gorm:"size:64;index:idx_owner_fuid,priority:2;comment:文件ID"`
     OwnerID     string     `gorm:"size:64;index:idx_owner_fuid,priority:1;comment:文件所属者"`

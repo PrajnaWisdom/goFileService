@@ -6,6 +6,7 @@ import (
     "fileservice/pkg/config"
     "fileservice/pkg/db"
     "fileservice/pkg/fileutil"
+    "fileservice/pkg/account"
 )
 
 
@@ -17,6 +18,8 @@ func main(){
     err := Db.AutoMigrate(
         &fileutil.FileMetadata{},
         &fileutil.FileChunks{},
+        &account.User{},
+        &account.Authorize{},
     )
     if err != nil {
         log.Fatalf("migrate err: %v", err)
