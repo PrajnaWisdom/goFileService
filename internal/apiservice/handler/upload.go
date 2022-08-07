@@ -10,6 +10,8 @@ import (
     "io"
     "os"
     "io/ioutil"
+    "encoding/hex"
+    "crypto/md5"
     "github.com/gin-gonic/gin"
     "fileservice/internal/apiservice/config"
     "fileservice/pkg/fileutil"
@@ -22,16 +24,111 @@ import (
 
 // UploadHandler provides arbitrary file uploads
 func UploadHandler(c *gin.Context) {
-    file, _ := c.FormFile("file")
-    log.Printf("upload file: %v\n", file.Filename)
-    dst := path.Join(config.GlobaConfig.FileBaseUri, file.Filename)
-    log.Printf("upload file path: %v\n", dst)
-    if err := c.SaveUploadedFile(file, dst); err != nil {
-        log.Printf("upload file fail: %v\n", err)
-        c.String(http.StatusOK, fmt.Sprintf("'%s' upload fail!", file.Filename))
+    var (
+        context = Context{C: c}
+        form = form.UploadFileForm{}
+    )
+    cUser, exists := c.Get("user")
+    if !exists {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            nil,
+            consts.ParamErrorMsg,
+        )
         return
     }
-    c.String(http.StatusOK, fmt.Sprintf("'%s' uploaded!", file.Filename))
+    user, ok := cUser.(*account.User)
+    if !ok {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            nil,
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    fh, err := c.FormFile("file")
+    if err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    f, err := fh.Open()
+    if err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    if err := c.ShouldBind(&form); err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    metadata := fileutil.FileMetadata{
+        FileName:   fh.Filename,
+        FileSize:   fh.Size,
+        Fuid:       util.EncodeMD5(util.GenerateUUID()),
+        OwnerID:    user.Uid,
+    }
+    err = metadata.Create(config.GlobaConfig.FileBaseUri)
+    if err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            fmt.Sprintf("%v", err),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    chunks := fileutil.FileChunks{
+        Fuid:      metadata.Fuid,
+        OwnerID:   user.Uid,
+        Index:     1,
+        Md5:       form.Md5,
+    }
+    if err := chunks.SaveData(f, config.GlobaConfig.FileBaseUri, false); err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    if err := chunks.Create(); err != nil {
+        context.Response(
+            http.StatusBadRequest,
+            consts.ParamError,
+            err.Error(),
+            consts.ParamErrorMsg,
+        )
+        return
+    }
+    hash := md5.New()
+    hash.Write([]byte(chunks.Md5))
+    fMd5 := hex.EncodeToString(hash.Sum(nil))
+    metadata.Complete(fMd5)
+    uri := metadata.GetFileUri()
+    url := strings.Join([]string{config.GlobaConfig.Domain, config.DownloadUri, uri}, "/")
+    context.Response(
+        http.StatusOK,
+        consts.Success,
+        map[string]interface{}{"url": url},
+        consts.SuccessMsg,
+    )
 }
 
 
@@ -52,7 +149,6 @@ func ChunksMetaDataHandler(c *gin.Context) {
         return
     }
     user, ok := cUser.(*account.User)
-    log.Println(user, ok)
     if !ok {
         context.Response(
             http.StatusBadRequest,
@@ -222,7 +318,7 @@ func UploadFileChunksHandler(c *gin.Context) {
         Index:     form.Index,
         Md5:       form.Md5,
     }
-    if err := chunks.SaveData(f, config.GlobaConfig.FileBaseUri, form.Md5); err != nil {
+    if err := chunks.SaveData(f, config.GlobaConfig.FileBaseUri, true); err != nil {
         context.Response(
             http.StatusBadRequest,
             consts.ParamError,

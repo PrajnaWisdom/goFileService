@@ -34,3 +34,8 @@ type GetMetadataForm struct {
     OwnerID    string     `form:"ownerid" binding:"required"`
     Fuid       string     `form:"fuid" binding:"required"`
 }
+
+
+type UploadFileForm struct {
+    Md5         string    `form:"md5"`
+}

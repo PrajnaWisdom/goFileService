@@ -94,7 +94,7 @@ func (this *FileChunks) Create() error {
 
 
 // SaveData 将分片数据保存到磁盘
-func (this *FileChunks) SaveData(reader io.Reader, baseurl, cMd5 string) error {
+func (this *FileChunks) SaveData(reader io.Reader, baseurl string, checkMd5 bool) error {
     filepath := path.Join(baseurl, this.OwnerID, this.Fuid, fmt.Sprintf("%v", this.Index) + ChunksFileSuffix)
     content, err := ioutil.ReadAll(reader)
     if err != nil {
@@ -103,7 +103,9 @@ func (this *FileChunks) SaveData(reader io.Reader, baseurl, cMd5 string) error {
     hash := md5.New()
     hash.Write(content)
     sMd5 := hex.EncodeToString(hash.Sum(nil))
-    if sMd5 != cMd5 {
+    if !checkMd5 {
+        this.Md5 = sMd5
+    } else if sMd5 != this.Md5 {
         return FileError{
             ErrorCode: consts.MD5Inconsistent,
             Msg:       consts.MD5InconsistentMsg,

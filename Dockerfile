@@ -1,9 +1,9 @@
 FROM golang:alpine AS development
 WORKDIR /app/goFileService
 COPY . /app/goFileService
-ENV GOPROXY https://goproxy.cn
+ENV GO111MODULE=auto
+ENV GOPROXY https://goproxy.cn,direct
 RUN go version
-# WORKDIR /app/goFileService
 RUN go mod vendor
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o /app/goFileService/cmd/fileService/service /app/goFileService/cmd/fileService/main.go
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o /app/goFileService/cmd/migrate/dbcli /app/goFileService/cmd/migrate/main.go
