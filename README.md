@@ -1,6 +1,7 @@
 # goFileService
+[![OSCS Status](https://www.oscs1024.com/platform/badge/PrajnaWisdom/goFileService.svg?size=small)](https://www.oscs1024.com/project/PrajnaWisdom/goFileService?ref=badge_small)
 
-**goFileService**是一个用**Go(Golang)**编写的文件上传下载的服务
+**goFileService**是一个用 **Go(Golang)** 编写的文件上传下载的服务
 
 ## 技术栈
 
